@@ -12,7 +12,6 @@ const createPayment = async (req, res) => {
         const { order_id, amount, currency, method, vpa } = req.body;
         const idempotencyKey = req.headers['idempotency-key'];
         const merchantId = req.merchant.id;
-        // 1. Idempotency Check
         if (idempotencyKey) {
             const keyRes = await (0, db_1.query)('SELECT * FROM idempotency_keys WHERE key = $1 AND merchant_id = $2', [idempotencyKey, merchantId]);
             if (keyRes.rows.length > 0) {
@@ -26,11 +25,9 @@ const createPayment = async (req, res) => {
                 }
             }
         }
-        // 2. Validate
         if (!amount || !currency || !method) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
-        // 3. Create Payment (Pending)
         const paymentId = `pay_${(0, uuid_1.v4)().replace(/-/g, '').substring(0, 16)}`;
         const now = new Date();
         const payment = {
@@ -44,9 +41,7 @@ const createPayment = async (req, res) => {
             created_at: now
         };
         await (0, db_1.query)('INSERT INTO payments (id, merchant_id, order_id, amount, currency, method, vpa, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [payment.id, merchantId, payment.order_id, payment.amount, payment.currency, payment.method, payment.vpa, payment.status, payment.created_at]);
-        // 4. Enqueue Job
         await paymentQueue.add('process-payment', { paymentId });
-        // 5. Store Idempotency & Return
         const response = payment;
         if (idempotencyKey) {
             const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hr
